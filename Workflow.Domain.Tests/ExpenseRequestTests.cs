@@ -1,16 +1,9 @@
-﻿// Importing domain entities that we want to test
-using Workflow.Domain.Entities;
-// Importing enums to verify status values
+﻿using Workflow.Domain.Entities;
 using Workflow.Domain.Enums;
-// Importing custom exceptions to test business rule violations
 using Workflow.Domain.Exceptions;
 
 namespace Workflow.Domain.Tests;
 
-/// <summary>
-/// Test class for ExpenseRequest entity.
-/// Contains unit tests to verify business rules and domain logic.
-/// </summary>
 public class ExpenseRequestTests
 {
     /// <summary>
@@ -18,7 +11,7 @@ public class ExpenseRequestTests
     /// Business Rule: All new expense requests must start as drafts.
     /// </summary>
     
-    [Fact] // Marks this method as a test that xUnit will discover and run
+    [Fact]
     public void Should_Create_Expense_In_Draft_Status()
     {
         // Arrange - Setup test data and prerequisites
