@@ -1,8 +1,17 @@
+using Microsoft.EntityFrameworkCore;
+using Workflow.Infrastructure.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// Configure PostgreSQL with Entity Framework Core
+builder.Services.AddDbContext<WorkflowDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsqlOptions => npgsqlOptions.MigrationsAssembly("Workflow.Infrastructure")));
 
 var app = builder.Build();
 
