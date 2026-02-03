@@ -150,12 +150,6 @@ Workflow.Domain (Business Logic)
    dotnet run --project Workflow.Api
    ```
 
-5. **Test the API**
-   ```powershell
-   # Register users and test workflow
-   .\test-workflow.ps1
-   ```
-
 ### Default Users
 Roles are automatically seeded on startup. Register users with:
 - **Employee**: Any user registered with default settings
@@ -210,10 +204,6 @@ dotnet test Workflow.Domain.Tests
 ```powershell
 # Start the API first
 dotnet run --project Workflow.Api
-
-# Run workflow test script
-.\test-workflow.ps1
-```
 
 ### Manual Testing with psql
 ```bash
