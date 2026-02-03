@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Workflow.Api.Data;
+using Workflow.Application.Services;
 using Workflow.Domain.Entities;
 using Workflow.Infrastructure.Data;
 
@@ -18,6 +19,9 @@ builder.Services.AddDbContext<WorkflowDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection"),
         npgsqlOptions => npgsqlOptions.MigrationsAssembly("Workflow.Infrastructure")));
+
+// Register Application Services
+builder.Services.AddScoped<ExpenseService>();
 
 // Configure ASP.NET Core Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>()
