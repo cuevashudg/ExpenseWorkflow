@@ -25,6 +25,11 @@ public class ExpenseService
     {
         var expense = new ExpenseRequest(userId, title, description, amount, expenseDate);
         _db.ExpenseRequests.Add(expense);
+        
+        // Create audit log
+        var auditLog = AuditLog.ForCreation(expense.Id, userId);
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
         return expense.Id;
     }
@@ -38,6 +43,12 @@ public class ExpenseService
             ?? throw new InvalidOperationException("Expense not found");
 
         expense.Update(userId, title, description, amount);
+        
+        // Create audit log
+        var changes = $"Updated: Title='{title}', Description='{description}', Amount=${amount}";
+        var auditLog = AuditLog.ForUpdate(expenseId, userId, changes);
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
     }
 
@@ -49,7 +60,13 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
+        var previousStatus = expense.Status;
         expense.Submit(userId);
+        
+        // Create audit log
+        var auditLog = AuditLog.ForStatusChange(expenseId, userId, previousStatus, expense.Status, "Submitted for approval");
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
     }
 
@@ -61,7 +78,13 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
+        var previousStatus = expense.Status;
         expense.Approve(managerId, userRole);
+        
+        // Create audit log
+        var auditLog = AuditLog.ForStatusChange(expenseId, managerId, previousStatus, expense.Status, $"Approved by {userRole}");
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
     }
 
@@ -73,7 +96,13 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
+        var previousStatus = expense.Status;
         expense.Reject(managerId, userRole, reason);
+        
+        // Create audit log
+        var auditLog = AuditLog.ForStatusChange(expenseId, managerId, previousStatus, expense.Status, $"Rejected by {userRole}: {reason}");
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
     }
 
@@ -116,6 +145,11 @@ public class ExpenseService
             ?? throw new InvalidOperationException("Expense not found");
 
         expense.AddAttachment(attachmentUrl);
+        
+        // Create audit log
+        var auditLog = new AuditLog(expenseId, expense.CreatorId, "AttachmentAdded", details: $"Added attachment: {attachmentUrl}");
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
     }
 
@@ -128,6 +162,22 @@ public class ExpenseService
             ?? throw new InvalidOperationException("Expense not found");
 
         expense.RemoveAttachment(attachmentUrl);
+        
+        // Create audit log
+        var auditLog = new AuditLog(expenseId, expense.CreatorId, "AttachmentRemoved", details: $"Removed attachment: {attachmentUrl}");
+        _db.AuditLogs.Add(auditLog);
+        
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Gets the audit history for a specific expense request.
+    /// </summary>
+    public async Task<List<AuditLog>> GetAuditHistory(Guid expenseId)
+    {
+        return await _db.AuditLogs
+            .Where(a => a.ExpenseRequestId == expenseId)
+            .OrderBy(a => a.Timestamp)
+            .ToListAsync();
     }
 }

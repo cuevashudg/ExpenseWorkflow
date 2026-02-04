@@ -51,6 +51,23 @@ public class AuthController : ControllerBase
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
         }
 
+        // Assign user to Identity role (this populates user_roles table)
+        var roleName = dto.Role.ToString(); // "Employee", "Manager", or "Admin"
+        var roleResult = await _userManager.AddToRoleAsync(user, roleName);
+
+        if (!roleResult.Succeeded)
+        {
+            // Role assignment failed, but user was created
+            return Ok(new 
+            { 
+                message = "User registered successfully but role assignment failed", 
+                userId = user.Id,
+                email = user.Email,
+                role = user.Role.ToString(),
+                roleErrors = roleResult.Errors.Select(e => e.Description)
+            });
+        }
+
         return Ok(new 
         { 
             message = "User registered successfully", 
@@ -78,7 +95,7 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid email or password" });
         }
 
-        var token = GenerateJwtToken(user);
+        var token = await GenerateJwtTokenAsync(user);
 
         return Ok(new
         {
@@ -119,15 +136,23 @@ public class AuthController : ControllerBase
         });
     }
 
-    private string GenerateJwtToken(ApplicationUser user)
+    private async Task<string> GenerateJwtTokenAsync(ApplicationUser user)
     {
-        var claims = new[]
+        // Get user's roles from Identity
+        var roles = await _userManager.GetRolesAsync(user);
+        
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email!),
-            new Claim(ClaimTypes.Name, user.FullName),
-            new Claim(ClaimTypes.Role, user.Role.ToString())
+            new Claim(ClaimTypes.Name, user.FullName)
         };
+
+        // Add all roles as claims (important for authorization)
+        foreach (var role in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));

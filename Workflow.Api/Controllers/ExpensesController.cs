@@ -191,6 +191,23 @@ public class ExpensesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Gets the audit history for an expense
+    /// </summary>
+    [HttpGet("{id}/audit-history")]
+    public async Task<IActionResult> GetAuditHistory(Guid id)
+    {
+        try
+        {
+            var auditLogs = await _service.GetAuditHistory(id);
+            return Ok(auditLogs);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     // Helper methods
     private Guid GetCurrentUserId()
     {
