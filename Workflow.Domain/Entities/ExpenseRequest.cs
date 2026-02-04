@@ -1,26 +1,42 @@
 using Workflow.Domain.Enums;
+using Workflow.Domain.Events;
 using Workflow.Domain.Exceptions;
 
 namespace Workflow.Domain.Entities;
 
 public class ExpenseRequest
 {
+    private const int MaxDaysOld = 90;
+    private const decimal ReceiptRequiredThreshold = 100m;
+    
     public Guid Id { get; private set; }
     public Guid CreatorId { get; private set; }
     public string Title { get; private set; }
     public string Description { get; private set; }
     public decimal Amount { get; private set; }
     public ExpenseStatus Status { get; private set; }
+    public DateTime ExpenseDate { get; private set; }
     public DateTime CreatedAt { get; private set; }
+    public DateTime? UpdatedAt { get; private set; }
     public DateTime? SubmittedAt { get; private set; }
     public DateTime? ProcessedAt { get; private set; }
     public Guid? ProcessedBy { get; private set; }
     public string? RejectionReason { get; private set; }
 
-    // Private constructor for EF Core
-    private ExpenseRequest() { }
+    private readonly List<string> _attachmentUrls = new();
+    public IReadOnlyCollection<string> AttachmentUrls => _attachmentUrls.AsReadOnly();
 
-    public ExpenseRequest(Guid creatorId, string title, string description, decimal amount)
+    private readonly List<IDomainEvent> _domainEvents = new();
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+
+    // Private constructor for EF Core
+    private ExpenseRequest() 
+    {
+        Title = string.Empty;
+        Description = string.Empty;
+    }
+
+    public ExpenseRequest(Guid creatorId, string title, string description, decimal amount, DateTime expenseDate)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainException("Title cannot be empty.");
@@ -28,11 +44,18 @@ public class ExpenseRequest
         if (amount <= 0)
             throw new DomainException("Amount must be greater than zero.");
 
+        if (expenseDate > DateTime.UtcNow)
+            throw new DomainException("Expense date cannot be in the future.");
+
+        if (expenseDate < DateTime.UtcNow.AddDays(-MaxDaysOld))
+            throw new DomainException($"Cannot submit expenses older than {MaxDaysOld} days.");
+
         Id = Guid.NewGuid();
         CreatorId = creatorId;
         Title = title;
         Description = description;
         Amount = amount;
+        ExpenseDate = expenseDate;
         Status = ExpenseStatus.Draft;
         CreatedAt = DateTime.UtcNow;
     }
@@ -55,6 +78,7 @@ public class ExpenseRequest
         Title = title;
         Description = description;
         Amount = amount;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     // Business Rule: Only drafts can be submitted
@@ -66,8 +90,36 @@ public class ExpenseRequest
         if (userId != CreatorId)
             throw new DomainException("Only the creator can submit this request.");
 
+        if (Amount > ReceiptRequiredThreshold && !_attachmentUrls.Any())
+            throw new DomainException($"Receipt required for expenses over ${ReceiptRequiredThreshold}.");
+
         Status = ExpenseStatus.Submitted;
         SubmittedAt = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+        
+        AddDomainEvent(new ExpenseSubmittedEvent(Id, userId, Amount));
+    }
+
+    // Business Rule: Attachments can only be added to drafts
+    public void AddAttachment(string url)
+    {
+        if (Status != ExpenseStatus.Draft)
+            throw new DomainException("Can only add attachments to draft requests.");
+
+        if (string.IsNullOrWhiteSpace(url))
+            throw new DomainException("Attachment URL cannot be empty.");
+
+        _attachmentUrls.Add(url);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemoveAttachment(string url)
+    {
+        if (Status != ExpenseStatus.Draft)
+            throw new DomainException("Can only remove attachments from draft requests.");
+
+        _attachmentUrls.Remove(url);
+        UpdatedAt = DateTime.UtcNow;
     }
 
     // Business Rule: Only Manager can approve/reject, only Submitted requests can be processed
@@ -82,6 +134,9 @@ public class ExpenseRequest
         Status = ExpenseStatus.Approved;
         ProcessedAt = DateTime.UtcNow;
         ProcessedBy = managerId;
+        UpdatedAt = DateTime.UtcNow;
+        
+        AddDomainEvent(new ExpenseApprovedEvent(Id, managerId, Amount));
     }
 
     // Business Rule: Only Manager can approve/reject, only Submitted requests can be processed
@@ -100,6 +155,9 @@ public class ExpenseRequest
         ProcessedAt = DateTime.UtcNow;
         ProcessedBy = managerId;
         RejectionReason = reason;
+        UpdatedAt = DateTime.UtcNow;
+        
+        AddDomainEvent(new ExpenseRejectedEvent(Id, managerId, reason));
     }
 
     // Business Rule: Approved requests cannot change
@@ -114,5 +172,16 @@ public class ExpenseRequest
     {
         if (Status == ExpenseStatus.Rejected)
             throw new DomainException("Rejected requests cannot be resubmitted.");
+    }
+
+    // Domain event management
+    private void AddDomainEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Add(domainEvent);
+    }
+
+    public void ClearDomainEvents()
+    {
+        _domainEvents.Clear();
     }
 }
