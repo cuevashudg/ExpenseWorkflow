@@ -5,6 +5,7 @@ namespace Workflow.Domain.Entities;
 
 public class ExpenseRequest
 {
+    public UserRole CreatorRole { get; private set; } // Add this property for role tracking
     public Guid Id { get; private set; }
     public Guid CreatorId { get; private set; }
     public string? CreatorName { get; set; } // Populated by service layer
@@ -52,6 +53,7 @@ public class ExpenseRequest
         CategoryId = categoryId;
         Status = ExpenseStatus.Draft;
         CreatedAt = DateTime.UtcNow;
+        CreatorRole = UserRole.Employee; // Default, should be set by service layer
     }
 
     // Business Rule: Only creator can edit Draft
@@ -101,6 +103,19 @@ public class ExpenseRequest
 
         if (Status != ExpenseStatus.Submitted)
             throw new DomainException("Only submitted requests can be approved.");
+
+        // Exception 1: If manager submits, only admin can approve
+        if (userRole == UserRole.Manager && CreatorId == managerId)
+            throw new DomainException("Managers cannot approve their own expenses. Only admins can approve manager expenses.");
+
+        // Exception 2: If submitter is a manager, only admin can approve
+        if (userRole == UserRole.Manager && CreatorId != managerId && CreatorRole == UserRole.Manager)
+            throw new DomainException("Managers cannot approve other managers' expenses. Only admins can approve manager expenses.");
+
+        // Exception 3: If amount exceeds threshold, only admin can approve
+        decimal approvalThreshold = 1000m; // Set your threshold here
+        if (Amount > approvalThreshold && userRole != UserRole.Admin)
+            throw new DomainException($"Expenses over ${approvalThreshold} require admin approval.");
 
         Status = ExpenseStatus.Approved;
         ProcessedAt = DateTime.UtcNow;

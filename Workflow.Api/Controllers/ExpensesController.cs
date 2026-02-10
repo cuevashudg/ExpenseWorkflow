@@ -398,6 +398,22 @@ public class ExpensesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Downloads a receipt attachment for an expense
+    /// </summary>
+    [HttpGet("{id}/attachments/download")]
+    public IActionResult DownloadReceipt(Guid id, [FromQuery] string fileName)
+    {
+        var uploadsRoot = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        var receiptsPath = Path.Combine(uploadsRoot, "uploads", "receipts");
+        var filePath = Path.Combine(receiptsPath, fileName);
+        if (!System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var contentType = "application/octet-stream";
+        return PhysicalFile(filePath, contentType, fileName);
+    }
+
     // Helper methods
     private Guid GetCurrentUserId()
     {

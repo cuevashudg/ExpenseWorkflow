@@ -82,12 +82,16 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
+        // Set creator role for domain logic
+        var creatorRole = await GetUserRole(expense.CreatorId);
+        expense.GetType().GetProperty("CreatorRole")?.SetValue(expense, creatorRole);
+
         expense.Approve(managerId, userRole);
-        
+
         // Create audit log
         var auditLog = AuditLog.ForApproval(expenseId, managerId);
         _db.AuditLogs.Add(auditLog);
-        
+
         await _db.SaveChangesAsync();
     }
 
