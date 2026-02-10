@@ -35,7 +35,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "✈️",
                 Color = "#3b82f6",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             },
             new
             {
@@ -45,7 +45,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "🍽️",
                 Color = "#f59e0b",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 2, 0, 0, 0, DateTimeKind.Utc)
             },
             new
             {
@@ -55,7 +55,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "📎",
                 Color = "#10b981",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 3, 0, 0, 0, DateTimeKind.Utc)
             },
             new
             {
@@ -65,7 +65,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "💻",
                 Color = "#8b5cf6",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 4, 0, 0, 0, DateTimeKind.Utc)
             },
             new
             {
@@ -75,7 +75,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "📚",
                 Color = "#ec4899",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 5, 0, 0, 0, DateTimeKind.Utc)
             },
             new
             {
@@ -85,7 +85,7 @@ public class ExpenseCategoryConfiguration : IEntityTypeConfiguration<ExpenseCate
                 Icon = "📋",
                 Color = "#6b7280",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = new DateTime(2023, 1, 6, 0, 0, 0, DateTimeKind.Utc)
             }
         );
     }
