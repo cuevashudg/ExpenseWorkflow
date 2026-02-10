@@ -53,6 +53,39 @@ public class AuditLog
             details: changes);
     }
 
+    public static AuditLog ForSubmission(Guid expenseRequestId, Guid userId)
+    {
+        return new AuditLog(
+            expenseRequestId,
+            userId,
+            "Submitted",
+            previousStatus: ExpenseStatus.Draft,
+            newStatus: ExpenseStatus.Submitted,
+            details: "Expense request submitted for approval");
+    }
+
+    public static AuditLog ForApproval(Guid expenseRequestId, Guid managerUserId)
+    {
+        return new AuditLog(
+            expenseRequestId,
+            managerUserId,
+            "Approved",
+            previousStatus: ExpenseStatus.Submitted,
+            newStatus: ExpenseStatus.Approved,
+            details: "Expense request approved");
+    }
+
+    public static AuditLog ForRejection(Guid expenseRequestId, Guid managerUserId, string reason)
+    {
+        return new AuditLog(
+            expenseRequestId,
+            managerUserId,
+            "Rejected",
+            previousStatus: ExpenseStatus.Submitted,
+            newStatus: ExpenseStatus.Rejected,
+            details: $"Expense request rejected: {reason}");
+    }
+
     public static AuditLog ForStatusChange(
         Guid expenseRequestId, 
         Guid userId, 
