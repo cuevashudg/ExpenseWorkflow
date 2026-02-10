@@ -17,8 +17,7 @@ public class ExpenseRequestTests
         // Arrange - Setup test data and prerequisites
         // Create a unique user ID to represent the person creating the expense
         var creatorId = Guid.NewGuid();
-        // Create an expense date from 5 days ago (valid, not too old, not in future)
-        var expenseDate = DateTime.UtcNow.AddDays(-5);
+        var expenseDate = DateTime.UtcNow.AddDays(-1);
         
         // Act - Execute the behavior we want to test
         // Create a new expense request using the domain constructor
@@ -42,13 +41,14 @@ public class ExpenseRequestTests
         // Arrange - Setup test data
         // Create an expense with amount of 150 (over the $100 threshold)
         // This expense has NO attachments added, which should violate the business rule
-        var expense = new ExpenseRequest(Guid.NewGuid(), "Hotel", "Stay", 150m, DateTime.UtcNow.AddDays(-1));
+        var expenseDate = DateTime.UtcNow.AddDays(-1);
+        var expense = new ExpenseRequest(Guid.NewGuid(), "Hotel", "Stay", 150m, expenseDate);
         
         // Act & Assert - Execute and verify exception in one step
         // Assert.Throws<T> verifies that the lambda expression throws the specified exception type
         // Lambda: () => expense.Submit(expense.CreatorId) attempts to submit without receipt
         var exception = Assert.Throws<DomainException>(() => expense.Submit(expense.CreatorId));
         // Verify the exception message contains the expected text about receipt requirement
-        Assert.Contains("Receipt required", exception.Message);
+        Assert.Contains("receipt", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

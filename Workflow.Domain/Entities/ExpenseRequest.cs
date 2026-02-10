@@ -1,33 +1,29 @@
 using Workflow.Domain.Enums;
-using Workflow.Domain.Events;
 using Workflow.Domain.Exceptions;
 
 namespace Workflow.Domain.Entities;
 
 public class ExpenseRequest
 {
-    private const int MaxDaysOld = 90;
-    private const decimal ReceiptRequiredThreshold = 100m;
-    
     public Guid Id { get; private set; }
     public Guid CreatorId { get; private set; }
+    public string? CreatorName { get; set; } // Populated by service layer
+    public Guid? CategoryId { get; private set; }
+    public ExpenseCategory? Category { get; private set; }
     public string Title { get; private set; }
     public string Description { get; private set; }
     public decimal Amount { get; private set; }
-    public ExpenseStatus Status { get; private set; }
     public DateTime ExpenseDate { get; private set; }
+    public ExpenseStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
     public DateTime? SubmittedAt { get; private set; }
     public DateTime? ProcessedAt { get; private set; }
     public Guid? ProcessedBy { get; private set; }
     public string? RejectionReason { get; private set; }
-
+    
     private readonly List<string> _attachmentUrls = new();
     public IReadOnlyCollection<string> AttachmentUrls => _attachmentUrls.AsReadOnly();
-
-    private readonly List<IDomainEvent> _domainEvents = new();
-    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
 
     // Private constructor for EF Core
     private ExpenseRequest() 
@@ -36,7 +32,7 @@ public class ExpenseRequest
         Description = string.Empty;
     }
 
-    public ExpenseRequest(Guid creatorId, string title, string description, decimal amount, DateTime expenseDate)
+    public ExpenseRequest(Guid creatorId, string title, string description, decimal amount, DateTime expenseDate, Guid? categoryId = null)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainException("Title cannot be empty.");
@@ -47,21 +43,19 @@ public class ExpenseRequest
         if (expenseDate > DateTime.UtcNow)
             throw new DomainException("Expense date cannot be in the future.");
 
-        if (expenseDate < DateTime.UtcNow.AddDays(-MaxDaysOld))
-            throw new DomainException($"Cannot submit expenses older than {MaxDaysOld} days.");
-
         Id = Guid.NewGuid();
         CreatorId = creatorId;
         Title = title;
         Description = description;
         Amount = amount;
         ExpenseDate = expenseDate;
+        CategoryId = categoryId;
         Status = ExpenseStatus.Draft;
         CreatedAt = DateTime.UtcNow;
     }
 
     // Business Rule: Only creator can edit Draft
-    public void Update(Guid userId, string title, string description, decimal amount)
+    public void Update(Guid userId, string title, string description, decimal amount, Guid? categoryId = null)
     {
         if (Status != ExpenseStatus.Draft)
             throw new DomainException("Only draft requests can be edited.");
@@ -78,10 +72,12 @@ public class ExpenseRequest
         Title = title;
         Description = description;
         Amount = amount;
+        CategoryId = categoryId;
         UpdatedAt = DateTime.UtcNow;
     }
 
     // Business Rule: Only drafts can be submitted
+    // Business Rule: Expenses > $100 require receipt
     public void Submit(Guid userId)
     {
         if (Status != ExpenseStatus.Draft)
@@ -90,39 +86,14 @@ public class ExpenseRequest
         if (userId != CreatorId)
             throw new DomainException("Only the creator can submit this request.");
 
-        if (Amount > ReceiptRequiredThreshold && !_attachmentUrls.Any())
-            throw new DomainException($"Receipt required for expenses over ${ReceiptRequiredThreshold}.");
+        if (Amount > 100 && _attachmentUrls.Count == 0)
+            throw new DomainException("Expenses over $100 require a receipt attachment.");
 
         Status = ExpenseStatus.Submitted;
         SubmittedAt = DateTime.UtcNow;
-        UpdatedAt = DateTime.UtcNow;
-        
-        AddDomainEvent(new ExpenseSubmittedEvent(Id, userId, Amount));
     }
 
-    // Business Rule: Attachments can only be added to drafts
-    public void AddAttachment(string url)
-    {
-        if (Status != ExpenseStatus.Draft)
-            throw new DomainException("Can only add attachments to draft requests.");
-
-        if (string.IsNullOrWhiteSpace(url))
-            throw new DomainException("Attachment URL cannot be empty.");
-
-        _attachmentUrls.Add(url);
-        UpdatedAt = DateTime.UtcNow;
-    }
-
-    public void RemoveAttachment(string url)
-    {
-        if (Status != ExpenseStatus.Draft)
-            throw new DomainException("Can only remove attachments from draft requests.");
-
-        _attachmentUrls.Remove(url);
-        UpdatedAt = DateTime.UtcNow;
-    }
-
-    // Business Rule: Only Manager can approve/reject, only Submitted requests can be processed
+    // Business Rule: Only Manager/Admin can approve/reject, only Submitted requests can be processed
     public void Approve(Guid managerId, UserRole userRole)
     {
         if (userRole != UserRole.Manager && userRole != UserRole.Admin)
@@ -134,12 +105,9 @@ public class ExpenseRequest
         Status = ExpenseStatus.Approved;
         ProcessedAt = DateTime.UtcNow;
         ProcessedBy = managerId;
-        UpdatedAt = DateTime.UtcNow;
-        
-        AddDomainEvent(new ExpenseApprovedEvent(Id, managerId, Amount));
     }
 
-    // Business Rule: Only Manager can approve/reject, only Submitted requests can be processed
+    // Business Rule: Only Manager/Admin can approve/reject, only Submitted requests can be processed
     public void Reject(Guid managerId, UserRole userRole, string reason)
     {
         if (userRole != UserRole.Manager && userRole != UserRole.Admin)
@@ -155,9 +123,19 @@ public class ExpenseRequest
         ProcessedAt = DateTime.UtcNow;
         ProcessedBy = managerId;
         RejectionReason = reason;
+    }
+
+    // Business Rule: Only draft expenses can have attachments added
+    public void AddAttachment(string attachmentUrl)
+    {
+        if (Status != ExpenseStatus.Draft)
+            throw new DomainException("Only draft requests can have attachments added.");
+
+        if (string.IsNullOrWhiteSpace(attachmentUrl))
+            throw new DomainException("Attachment URL cannot be empty.");
+
+        _attachmentUrls.Add(attachmentUrl);
         UpdatedAt = DateTime.UtcNow;
-        
-        AddDomainEvent(new ExpenseRejectedEvent(Id, managerId, reason));
     }
 
     // Business Rule: Approved requests cannot change
@@ -172,16 +150,5 @@ public class ExpenseRequest
     {
         if (Status == ExpenseStatus.Rejected)
             throw new DomainException("Rejected requests cannot be resubmitted.");
-    }
-
-    // Domain event management
-    private void AddDomainEvent(IDomainEvent domainEvent)
-    {
-        _domainEvents.Add(domainEvent);
-    }
-
-    public void ClearDomainEvents()
-    {
-        _domainEvents.Clear();
     }
 }

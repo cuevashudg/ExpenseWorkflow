@@ -25,6 +25,24 @@ public class WorkflowDbContext : IdentityDbContext<ApplicationUser, IdentityRole
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     /// <summary>
+    /// Gets the DbSet for ExpenseComment entities.
+    /// Represents the expense_comments table in the database.
+    /// </summary>
+    public DbSet<ExpenseComment> ExpenseComments => Set<ExpenseComment>();
+
+    /// <summary>
+    /// Gets the DbSet for ExpenseCategory entities.
+    /// Represents the expense_categories table in the database.
+    /// </summary>
+    public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+
+    /// <summary>
+    /// Gets the DbSet for Budget entities.
+    /// Represents the budgets table in the database.
+    /// </summary>
+    public DbSet<Budget> Budgets => Set<Budget>();
+
+    /// <summary>
     /// Initializes a new instance of the WorkflowDbContext.
     /// </summary>
     /// <param name="options">The options to configure the context.</param>

@@ -54,6 +54,9 @@ public class ExpenseRequestConfiguration : IEntityTypeConfiguration<ExpenseReque
         builder.Property(e => e.RejectionReason)
             .HasMaxLength(500);
 
+        builder.Property(e => e.CreatorName)
+            .HasMaxLength(200);
+
         // Backing field for private collection
         builder.Property<List<string>>("_attachmentUrls")
             .HasColumnName("attachment_urls")
@@ -64,9 +67,6 @@ public class ExpenseRequestConfiguration : IEntityTypeConfiguration<ExpenseReque
                 (c1, c2) => c1!.SequenceEqual(c2!),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
-
-        // Ignore domain events - not persisted to database
-        builder.Ignore(e => e.DomainEvents);
 
         // Indexes for common queries
         builder.HasIndex(e => e.CreatorId)

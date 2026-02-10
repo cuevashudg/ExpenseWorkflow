@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.FileProviders;
 using Workflow.Api.Data;
 using Workflow.Application.Services;
 using Workflow.Domain.Entities;
@@ -15,7 +16,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.SetIsOriginAllowed(_ => true) // Allow any origin in development
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -26,14 +27,24 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Configure PostgreSQL with Entity Framework Core
-builder.Services.AddDbContext<WorkflowDbContext>(options =>
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        npgsqlOptions => npgsqlOptions.MigrationsAssembly("Workflow.Infrastructure")));
+// Configure Database: Use In-Memory DB if connection string not provided (development mode)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    builder.Services.AddDbContext<WorkflowDbContext>(options =>
+        options.UseInMemoryDatabase("WorkflowDb"));
+}
+else
+{
+    builder.Services.AddDbContext<WorkflowDbContext>(options =>
+        options.UseNpgsql(
+            connectionString,
+            npgsqlOptions => npgsqlOptions.MigrationsAssembly("Workflow.Infrastructure")));
+}
 
 // Register Application Services
 builder.Services.AddScoped<ExpenseService>();
+builder.Services.AddScoped<BudgetService>();
 
 // Configure ASP.NET Core Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>()
@@ -57,8 +68,7 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
-        )
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
     };
 });
 
@@ -70,11 +80,16 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Seed roles
+// Seed roles and users (development only)
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     await RoleSeeder.SeedAsync(services);
+    
+    if (app.Environment.IsDevelopment())
+    {
+        await UserSeeder.SeedAsync(services);
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -88,6 +103,18 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+// Restrict static file access to assets directory only (secure)
+// Do NOT serve files from /uploads/ via static middleware
+var webRootPath = app.Services.GetRequiredService<IWebHostEnvironment>().WebRootPath
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+var staticFileOptions = new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(webRootPath, "assets")),
+    RequestPath = "/assets"
+};
+app.UseStaticFiles(staticFileOptions);
+
 // Enable CORS
 app.UseCors("AllowFrontend");
 
@@ -95,32 +122,8 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
 app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
 
 
