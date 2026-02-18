@@ -16,6 +16,11 @@ public class ApplicationUser : IdentityUser<Guid>
     public UserRole Role { get; set; }
 
     /// <summary>
+    /// The manager's user ID for this user (if any).
+    /// </summary>
+    public Guid? ManagerId { get; set; }
+
+    /// <summary>
     /// Full name of the user.
     /// </summary>
     public string FullName { get; set; } = string.Empty;

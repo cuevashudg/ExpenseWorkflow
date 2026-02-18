@@ -152,7 +152,11 @@ public class ExpensesController : ControllerBase
             // - Admins can approve any expense (both Employee and Manager)
             if (userRole == UserRole.Manager && creatorRole == UserRole.Manager)
             {
-                return Forbid("Managers can only approve employee expenses. Contact an administrator to approve manager expenses.");
+                // Option 1: Standard Forbid (no message)
+                // return Forbid();
+
+                // Option 2: Custom error message with 403 status
+                return StatusCode(403, new { error = "Managers can only approve employee expenses. Contact an administrator to approve manager expenses." });
             }
             
             await _service.ApproveExpense(id, managerId, userRole);
@@ -314,48 +318,46 @@ public class ExpensesController : ControllerBase
     }
 
     /// <summary>
-    /// Downloads an attachment for an expense with authorization checks
+    /// Downloads an attachment for an expense with resource-based authorization
     /// </summary>
-    [HttpGet("attachments/{filename}")]
-    [Authorize]
-    public async Task<IActionResult> DownloadAttachment(string filename)
+    [HttpGet("{expenseId}/attachments/{fileName}")]
+    public async Task<IActionResult> DownloadAttachment(Guid expenseId, string fileName, [FromServices] IAuthorizationService authorizationService, [FromServices] Workflow.Infrastructure.Data.WorkflowDbContext db)
     {
-        try
+        // Validate filename to prevent directory traversal attacks
+        if (string.IsNullOrEmpty(fileName) || fileName.Contains("..") || fileName.Contains("/") || fileName.Contains("\\"))
         {
-            // Validate filename to prevent directory traversal attacks
-            if (string.IsNullOrEmpty(filename) || filename.Contains("..") || filename.Contains("/") || filename.Contains("\\"))
-            {
-                return BadRequest(new { error = "Invalid filename." });
-            }
-
-            var uploadsPath = Path.Combine(
-                _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
-                "uploads", "receipts");
-            var filePath = Path.Combine(uploadsPath, filename);
-
-            // Security: Verify file is within receipts directory (prevent path traversal)
-            var fullPath = Path.GetFullPath(filePath);
-            var fullUploadsPath = Path.GetFullPath(uploadsPath);
-
-            if (!fullPath.StartsWith(fullUploadsPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return Forbid();
-            }
-
-            if (!System.IO.File.Exists(filePath))
-            {
-                return NotFound(new { error = "Attachment not found." });
-            }
-
-            var stream = System.IO.File.OpenRead(filePath);
-            var contentType = GetContentType(filename);
-
-            return File(stream, contentType, System.IO.Path.GetFileName(filePath));
+            return BadRequest(new { error = "Invalid filename." });
         }
-        catch (Exception ex)
+
+        var expense = await db.ExpenseRequests.FindAsync(expenseId);
+        if (expense == null)
+            return NotFound(new { error = "Expense not found." });
+
+        var authResult = await authorizationService.AuthorizeAsync(User, expense, "ExpenseAccess");
+        if (!authResult.Succeeded)
+            return Forbid();
+
+        var uploadsPath = Path.Combine(
+            _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
+            "uploads", "receipts");
+        var filePath = Path.Combine(uploadsPath, fileName);
+
+        // Security: Verify file is within receipts directory (prevent path traversal)
+        var fullPath = Path.GetFullPath(filePath);
+        var fullUploadsPath = Path.GetFullPath(uploadsPath);
+        if (!fullPath.StartsWith(fullUploadsPath, StringComparison.OrdinalIgnoreCase))
         {
-            return BadRequest(new { error = ex.Message });
+            return Forbid();
         }
+
+        if (!System.IO.File.Exists(filePath))
+        {
+            return NotFound(new { error = "Attachment not found." });
+        }
+
+        var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
+        var contentType = GetContentType(fileName);
+        return File(stream, contentType, System.IO.Path.GetFileName(filePath));
     }
 
     /// <summary>
@@ -398,21 +400,7 @@ public class ExpensesController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Downloads a receipt attachment for an expense
-    /// </summary>
-    [HttpGet("{id}/attachments/download")]
-    public IActionResult DownloadReceipt(Guid id, [FromQuery] string fileName)
-    {
-        var uploadsRoot = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-        var receiptsPath = Path.Combine(uploadsRoot, "uploads", "receipts");
-        var filePath = Path.Combine(receiptsPath, fileName);
-        if (!System.IO.File.Exists(filePath))
-            return NotFound();
-
-        var contentType = "application/octet-stream";
-        return PhysicalFile(filePath, contentType, fileName);
-    }
+    // ...existing code...
 
     // Helper methods
     private Guid GetCurrentUserId()

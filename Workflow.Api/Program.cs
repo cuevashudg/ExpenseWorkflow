@@ -46,6 +46,9 @@ else
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<BudgetService>();
 
+// Register user lookup service for authorization
+builder.Services.AddScoped<Workflow.Api.Authorization.IUserLookupService, Workflow.Api.Authorization.UserLookupService>();
+
 // Configure ASP.NET Core Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>()
     .AddEntityFrameworkStores<WorkflowDbContext>()
@@ -74,9 +77,12 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("CanApproveExpense",
-        policy => policy.RequireRole("Manager", "Admin"));
+    options.AddPolicy("ExpenseAccess", policy =>
+        policy.Requirements.Add(new Workflow.Api.Authorization.ExpenseAccessRequirement()));
 });
+
+// Register the resource-based authorization handler
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Workflow.Api.Authorization.ExpenseAccessHandler>();
 
 var app = builder.Build();
 
