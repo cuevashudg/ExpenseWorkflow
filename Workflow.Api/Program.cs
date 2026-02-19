@@ -43,8 +43,10 @@ else
 }
 
 // Register Application Services
+
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<ExpenseBulkAuthorizationService>();
 
 // Register user lookup service for authorization
 builder.Services.AddScoped<Workflow.Api.Authorization.IUserLookupService, Workflow.Api.Authorization.UserLookupService>();
