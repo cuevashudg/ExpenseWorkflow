@@ -489,4 +489,16 @@ public class ExpenseService
 
         return result;
     }
+
+    // Begin a transaction for bulk operations
+    public Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction BeginTransaction()
+    {
+        return _db.Database.BeginTransaction();
+    }
+
+    // Batch-load expenses by IDs
+    public async Task<List<ExpenseRequest>> GetExpensesByIdsAsync(IEnumerable<Guid> ids)
+    {
+        return await _db.ExpenseRequests.Where(e => ids.Contains(e.Id)).ToListAsync();
+    }
 }

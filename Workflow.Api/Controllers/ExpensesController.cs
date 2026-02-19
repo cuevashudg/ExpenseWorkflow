@@ -39,8 +39,24 @@ namespace Workflow.Api.Controllers
             var unauthorized = authResults.Where(kv => !kv.Value).Select(kv => kv.Key).ToList();
             if (unauthorized.Any())
                 return Forbid();
-            // ...existing code to approve expenses...
-            return Ok(new { approved = authResults.Where(kv => kv.Value).Select(kv => kv.Key).ToList() });
+
+            var userId = GetCurrentUserId();
+            var userRole = GetCurrentUserRole();
+            var approved = new List<Guid>();
+            var failed = new List<object>();
+            foreach (var id in authResults.Where(kv => kv.Value).Select(kv => kv.Key))
+            {
+                try
+                {
+                    await _service.ApproveExpense(id, userId, userRole);
+                    approved.Add(id);
+                }
+                catch (Exception ex)
+                {
+                    failed.Add(new { id, error = ex.Message });
+                }
+            }
+            return Ok(new { approved, failed });
         }
 
         // --- All Other Controller Methods ---
