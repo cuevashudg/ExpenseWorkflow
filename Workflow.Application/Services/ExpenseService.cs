@@ -82,12 +82,16 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
+        // Set creator role for domain logic
+        var creatorRole = await GetUserRole(expense.CreatorId);
+        expense.GetType().GetProperty("CreatorRole")?.SetValue(expense, creatorRole);
+
         expense.Approve(managerId, userRole);
-        
+
         // Create audit log
         var auditLog = AuditLog.ForApproval(expenseId, managerId);
         _db.AuditLogs.Add(auditLog);
-        
+
         await _db.SaveChangesAsync();
     }
 
@@ -484,5 +488,17 @@ public class ExpenseService
         .ToList();
 
         return result;
+    }
+
+    // Begin a transaction for bulk operations
+    public Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction BeginTransaction()
+    {
+        return _db.Database.BeginTransaction();
+    }
+
+    // Batch-load expenses by IDs
+    public async Task<List<ExpenseRequest>> GetExpensesByIdsAsync(IEnumerable<Guid> ids)
+    {
+        return await _db.ExpenseRequests.Where(e => ids.Contains(e.Id)).ToListAsync();
     }
 }
