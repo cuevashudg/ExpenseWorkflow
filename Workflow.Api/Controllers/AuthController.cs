@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using Workflow.Application.Models;
 using Workflow.Domain.Entities;
 using Workflow.Domain.Enums;
 
@@ -39,7 +40,7 @@ public class AuthController : ControllerBase
             UserName = dto.Email,
             Email = dto.Email,
             FullName = dto.FullName,
-            Role = dto.Role,
+            Role = UserRole.Employee, // Always default to Employee — prevent mass assignment of Role
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -48,16 +49,16 @@ public class AuthController : ControllerBase
 
         if (!result.Succeeded)
         {
-            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+            var errorMsg = string.Join("; ", result.Errors.Select(e => e.Description));
+            return BadRequest(ApiResponse.Fail(errorMsg));
         }
 
-        return Ok(new 
+        return Ok(ApiResponse<object>.Ok(new 
         { 
-            message = "User registered successfully", 
             userId = user.Id,
             email = user.Email,
             role = user.Role.ToString()
-        });
+        }));
     }
 
     /// <summary>
@@ -69,18 +70,18 @@ public class AuthController : ControllerBase
         var user = await _userManager.FindByEmailAsync(dto.Email);
         if (user == null)
         {
-            return Unauthorized(new { message = "Invalid email or password" });
+            return Unauthorized(ApiResponse.Fail("Invalid email or password"));
         }
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, dto.Password, false);
         if (!result.Succeeded)
         {
-            return Unauthorized(new { message = "Invalid email or password" });
+            return Unauthorized(ApiResponse.Fail("Invalid email or password"));
         }
 
         var token = GenerateJwtToken(user);
 
-        return Ok(new
+        return Ok(ApiResponse<object>.Ok(new
         {
             token,
             userId = user.Id,
@@ -88,7 +89,7 @@ public class AuthController : ControllerBase
             fullName = user.FullName,
             role = user.Role.ToString(),
             expiresIn = _configuration["Jwt:ExpiresInMinutes"]
-        });
+        }));
     }
 
     /// <summary>
@@ -101,22 +102,22 @@ public class AuthController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null)
         {
-            return Unauthorized();
+            return Unauthorized(ApiResponse.Fail("User not authenticated"));
         }
 
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
         {
-            return NotFound();
+            return NotFound(ApiResponse.Fail("User not found"));
         }
 
-        return Ok(new
+        return Ok(ApiResponse<object>.Ok(new
         {
             userId = user.Id,
             email = user.Email,
             fullName = user.FullName,
             role = user.Role.ToString()
-        });
+        }));
     }
 
     private string GenerateJwtToken(ApplicationUser user)
@@ -149,8 +150,7 @@ public class AuthController : ControllerBase
 public record RegisterDto(
     string Email,
     string Password,
-    string FullName,
-    UserRole Role = UserRole.Employee
+    string FullName
 );
 
 public record LoginDto(

@@ -82,9 +82,9 @@ public class ExpenseService
         var expense = await _db.ExpenseRequests.FindAsync(expenseId)
             ?? throw new InvalidOperationException("Expense not found");
 
-        // Set creator role for domain logic
+        // Set creator role for domain logic (no more reflection)
         var creatorRole = await GetUserRole(expense.CreatorId);
-        expense.GetType().GetProperty("CreatorRole")?.SetValue(expense, creatorRole);
+        expense.SetCreatorRole(creatorRole);
 
         expense.Approve(managerId, userRole);
 
@@ -118,6 +118,7 @@ public class ExpenseService
     public async Task<ExpenseRequest?> GetExpenseById(Guid expenseId)
     {
         var expense = await _db.ExpenseRequests
+            .AsNoTracking()
             .Include(e => e.Category)
             .FirstOrDefaultAsync(e => e.Id == expenseId);
         
@@ -140,6 +141,7 @@ public class ExpenseService
     public async Task<PagedResult<ExpenseRequest>> GetExpensesByCreator(Guid userId, ExpenseQuery query)
     {
         var dbQuery = _db.ExpenseRequests
+            .AsNoTracking()
             .Include(e => e.Category)
             .Where(e => e.CreatorId == userId);
 
@@ -152,6 +154,9 @@ public class ExpenseService
 
         if (query.Status.HasValue)
             dbQuery = dbQuery.Where(e => e.Status == query.Status.Value);
+
+        if (query.CategoryId.HasValue)
+            dbQuery = dbQuery.Where(e => e.CategoryId == query.CategoryId.Value);
 
         if (query.FromDate.HasValue)
             dbQuery = dbQuery.Where(e => e.ExpenseDate >= query.FromDate.Value);
@@ -195,6 +200,7 @@ public class ExpenseService
     public async Task<PagedResult<ExpenseRequest>> GetPendingExpenses(ExpenseQuery query)
     {
         var dbQuery = _db.ExpenseRequests
+            .AsNoTracking()
             .Include(e => e.Category)
             .Where(e => e.Status == ExpenseStatus.Submitted);
 
@@ -204,6 +210,9 @@ public class ExpenseService
             var search = query.Search.ToLower();
             dbQuery = dbQuery.Where(e => e.Title.ToLower().Contains(search) || e.Description.ToLower().Contains(search));
         }
+
+        if (query.CategoryId.HasValue)
+            dbQuery = dbQuery.Where(e => e.CategoryId == query.CategoryId.Value);
 
         if (query.FromDate.HasValue)
             dbQuery = dbQuery.Where(e => e.ExpenseDate >= query.FromDate.Value);
@@ -236,14 +245,17 @@ public class ExpenseService
             .Take(pageSize)
             .ToListAsync();
 
-        // Enrich with creator names
+        // FIX: Batch-load creator names in one query instead of N+1
+        var creatorIds = items.Select(e => e.CreatorId).Distinct().ToList();
+        var creators = await _db.Users
+            .AsNoTracking()
+            .Where(u => creatorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.FullName ?? u.Email ?? "Unknown");
+
         foreach (var expense in items)
         {
-            var user = await _userManager.FindByIdAsync(expense.CreatorId.ToString());
-            if (user != null)
-            {
-                expense.CreatorName = user.FullName ?? user.Email ?? "Unknown";
-            }
+            if (creators.TryGetValue(expense.CreatorId, out var name))
+                expense.CreatorName = name;
         }
 
         return new PagedResult<ExpenseRequest>(items, totalCount, page, pageSize);
@@ -267,6 +279,7 @@ public class ExpenseService
     public async Task<List<AuditLog>> GetAuditHistory(Guid expenseId)
     {
         return await _db.AuditLogs
+            .AsNoTracking()
             .Where(a => a.ExpenseRequestId == expenseId)
             .OrderBy(a => a.Timestamp)
             .ToListAsync();
@@ -305,6 +318,7 @@ public class ExpenseService
     public async Task<List<ExpenseComment>> GetComments(Guid expenseId)
     {
         return await _db.ExpenseComments
+            .AsNoTracking()
             .Where(c => c.ExpenseRequestId == expenseId)
             .OrderBy(c => c.CreatedAt)
             .ToListAsync();
@@ -346,7 +360,7 @@ public class ExpenseService
         if (endDate.HasValue)
             query = query.Where(e => e.CreatedAt <= endDate.Value);
 
-        var expenses = await query.Include(e => e.Category).ToListAsync();
+        var expenses = await query.AsNoTracking().Include(e => e.Category).ToListAsync();
 
         var analytics = new ExpenseAnalytics
         {
@@ -405,6 +419,7 @@ public class ExpenseService
     public async Task<List<ExpenseCategory>> GetCategories()
     {
         return await _db.ExpenseCategories
+            .AsNoTracking()
             .Where(c => c.IsActive)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -415,7 +430,7 @@ public class ExpenseService
     /// </summary>
     public async Task<List<StatusDistribution>> GetStatusDistribution(Guid? userId = null, DateTime? startDate = null, DateTime? endDate = null)
     {
-        var query = _db.ExpenseRequests.AsQueryable();
+        var query = _db.ExpenseRequests.AsNoTracking().AsQueryable();
 
         if (userId.HasValue)
             query = query.Where(e => e.CreatorId == userId.Value);
@@ -455,6 +470,7 @@ public class ExpenseService
     {
         var startDate = DateTime.UtcNow.AddMonths(-monthsBack);
         var query = _db.ExpenseRequests
+            .AsNoTracking()
             .Where(e => e.SubmittedAt != null && e.SubmittedAt >= startDate);
 
         if (userId.HasValue)
@@ -499,6 +515,6 @@ public class ExpenseService
     // Batch-load expenses by IDs
     public async Task<List<ExpenseRequest>> GetExpensesByIdsAsync(IEnumerable<Guid> ids)
     {
-        return await _db.ExpenseRequests.Where(e => ids.Contains(e.Id)).ToListAsync();
+        return await _db.ExpenseRequests.AsNoTracking().Where(e => ids.Contains(e.Id)).ToListAsync();
     }
 }

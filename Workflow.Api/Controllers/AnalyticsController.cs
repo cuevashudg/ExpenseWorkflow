@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Workflow.Application.Models;
 using Workflow.Application.Services;
 
 namespace Workflow.Api.Controllers;
@@ -25,9 +26,16 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var analytics = await _service.GetUserAnalytics(userId, startDate, endDate);
-        return Ok(analytics);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var analytics = await _service.GetUserAnalytics(userId, startDate, endDate);
+            return Ok(ApiResponse<object>.Ok(analytics));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -36,8 +44,15 @@ public class AnalyticsController : ControllerBase
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories()
     {
-        var categories = await _service.GetCategories();
-        return Ok(categories);
+        try
+        {
+            var categories = await _service.GetCategories();
+            return Ok(ApiResponse<object>.Ok(categories));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -48,9 +63,16 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var userId = GetCurrentUserId();
-        var distribution = await _service.GetStatusDistribution(userId, startDate, endDate);
-        return Ok(distribution);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var distribution = await _service.GetStatusDistribution(userId, startDate, endDate);
+            return Ok(ApiResponse<object>.Ok(distribution));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -59,9 +81,16 @@ public class AnalyticsController : ControllerBase
     [HttpGet("approval-rates")]
     public async Task<IActionResult> GetApprovalRates([FromQuery] int monthsBack = 6)
     {
-        var userId = GetCurrentUserId();
-        var rates = await _service.GetApprovalRates(userId, monthsBack);
-        return Ok(rates);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var rates = await _service.GetApprovalRates(userId, monthsBack);
+            return Ok(ApiResponse<object>.Ok(rates));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -73,8 +102,15 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var distribution = await _service.GetStatusDistribution(null, startDate, endDate);
-        return Ok(distribution);
+        try
+        {
+            var distribution = await _service.GetStatusDistribution(null, startDate, endDate);
+            return Ok(ApiResponse<object>.Ok(distribution));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -84,12 +120,21 @@ public class AnalyticsController : ControllerBase
     [Authorize(Roles = "Manager,Admin")]
     public async Task<IActionResult> GetManagerApprovalRates([FromQuery] int monthsBack = 6)
     {
-        var rates = await _service.GetApprovalRates(null, monthsBack);
-        return Ok(rates);
+        try
+        {
+            var rates = await _service.GetApprovalRates(null, monthsBack);
+            return Ok(ApiResponse<object>.Ok(rates));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     private Guid GetCurrentUserId()
     {
-        return Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var claim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        return Guid.Parse(claim);
     }
 }

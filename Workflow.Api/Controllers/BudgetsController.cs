@@ -24,9 +24,16 @@ public class BudgetsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMyBudgets([FromQuery] bool activeOnly = false)
     {
-        var userId = GetCurrentUserId();
-        var budgets = await _service.GetUserBudgets(userId, activeOnly);
-        return Ok(budgets);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var budgets = await _service.GetUserBudgets(userId, activeOnly);
+            return Ok(ApiResponse<object>.Ok(budgets));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -35,9 +42,16 @@ public class BudgetsController : ControllerBase
     [HttpGet("status")]
     public async Task<IActionResult> GetBudgetStatus()
     {
-        var userId = GetCurrentUserId();
-        var status = await _service.GetBudgetStatus(userId);
-        return Ok(status);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var status = await _service.GetBudgetStatus(userId);
+            return Ok(ApiResponse<object>.Ok(status));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -46,17 +60,25 @@ public class BudgetsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateBudget([FromBody] CreateBudgetDto dto)
     {
-        var userId = GetCurrentUserId();
-        var budgetId = await _service.CreateBudget(
-            userId, 
-            dto.Name, 
-            dto.Amount, 
-            dto.StartDate, 
-            dto.EndDate, 
-            dto.Description, 
-            dto.CategoryId);
-        
-        return CreatedAtAction(nameof(GetMyBudgets), new { id = budgetId }, new { id = budgetId });
+        try
+        {
+            var userId = GetCurrentUserId();
+            var budgetId = await _service.CreateBudget(
+                userId, 
+                dto.Name, 
+                dto.Amount, 
+                dto.StartDate, 
+                dto.EndDate, 
+                dto.Description, 
+                dto.CategoryId);
+            
+            return CreatedAtAction(nameof(GetMyBudgets), new { id = budgetId }, 
+                ApiResponse<object>.Ok(new { id = budgetId }));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -65,8 +87,15 @@ public class BudgetsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateBudget(Guid id, [FromBody] UpdateBudgetDto dto)
     {
-        await _service.UpdateBudget(id, dto.Name, dto.Amount, dto.StartDate, dto.EndDate, dto.Description);
-        return NoContent();
+        try
+        {
+            await _service.UpdateBudget(id, dto.Name, dto.Amount, dto.StartDate, dto.EndDate, dto.Description);
+            return Ok(ApiResponse.Ok());
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -75,8 +104,15 @@ public class BudgetsController : ControllerBase
     [HttpPost("{id}/activate")]
     public async Task<IActionResult> ActivateBudget(Guid id)
     {
-        await _service.ActivateBudget(id);
-        return NoContent();
+        try
+        {
+            await _service.ActivateBudget(id);
+            return Ok(ApiResponse.Ok());
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -85,8 +121,15 @@ public class BudgetsController : ControllerBase
     [HttpPost("{id}/deactivate")]
     public async Task<IActionResult> DeactivateBudget(Guid id)
     {
-        await _service.DeactivateBudget(id);
-        return NoContent();
+        try
+        {
+            await _service.DeactivateBudget(id);
+            return Ok(ApiResponse.Ok());
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     /// <summary>
@@ -95,13 +138,22 @@ public class BudgetsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteBudget(Guid id)
     {
-        var userId = GetCurrentUserId();
-        await _service.DeleteBudget(id, userId);
-        return NoContent();
+        try
+        {
+            var userId = GetCurrentUserId();
+            await _service.DeleteBudget(id, userId);
+            return Ok(ApiResponse.Ok());
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
     }
 
     private Guid GetCurrentUserId()
     {
-        return Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var claim = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        return Guid.Parse(claim);
     }
 }

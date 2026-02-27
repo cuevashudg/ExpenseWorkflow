@@ -6,6 +6,7 @@ public class ExpenseQuery
 {
     public string? Search { get; init; }
     public ExpenseStatus? Status { get; init; }
+    public Guid? CategoryId { get; init; }
     public DateTime? FromDate { get; init; }
     public DateTime? ToDate { get; init; }
     public decimal? MinAmount { get; init; }

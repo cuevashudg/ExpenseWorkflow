@@ -1,15 +1,21 @@
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.FileProviders;
+using Workflow.Api.Authorization;
 using Workflow.Api.Data;
 using Workflow.Application.Services;
 using Workflow.Domain.Entities;
 using Workflow.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// TODO: REMOVE BEFORE PROD — Dev auth bypass flag
+var bypassAuth = builder.Environment.IsDevelopment() &&
+                 builder.Configuration.GetValue<bool>("DevSettings:BypassAuth");
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -57,9 +63,10 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>()
     .AddDefaultTokenProviders();
 
 // Configure JWT Authentication
+// TODO: REMOVE BEFORE PROD — DevBypass scheme selection
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = bypassAuth ? "DevBypass" : JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
@@ -76,6 +83,13 @@ builder.Services.AddAuthentication(options =>
             Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
     };
 });
+
+// TODO: REMOVE BEFORE PROD — Register dev bypass auth handler
+if (bypassAuth)
+{
+    builder.Services.AddAuthentication()
+        .AddScheme<AuthenticationSchemeOptions, DevBypassAuthHandler>("DevBypass", null);
+}
 
 builder.Services.AddAuthorization(options =>
 {
@@ -97,6 +111,12 @@ using (var scope = app.Services.CreateScope())
     if (app.Environment.IsDevelopment())
     {
         await UserSeeder.SeedAsync(services);
+
+        // TODO: REMOVE BEFORE PROD — Seed dev data when bypass is enabled
+        /*if (app.Configuration.GetValue<bool>("DevSettings:BypassAuth"))
+        {
+            await DevDataSeeder.SeedAsync(services);
+        }*/
     }
 }
 

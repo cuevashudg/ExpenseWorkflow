@@ -56,6 +56,15 @@ public class ExpenseRequest
         CreatorRole = UserRole.Employee; // Default, should be set by service layer
     }
 
+    /// <summary>
+    /// Sets the creator's role for approval authorization checks.
+    /// Called by the service layer before Approve/Reject.
+    /// </summary>
+    public void SetCreatorRole(UserRole role)
+    {
+        CreatorRole = role;
+    }
+
     // Business Rule: Only creator can edit Draft
     public void Update(Guid userId, string title, string description, decimal amount, Guid? categoryId = null)
     {

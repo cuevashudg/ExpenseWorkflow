@@ -21,11 +21,13 @@ namespace Workflow.Api.Controllers
     {
         private readonly ExpenseService _service;
         private readonly IWebHostEnvironment _environment;
+        private readonly IConfiguration _configuration;
 
-        public ExpensesController(ExpenseService service, IWebHostEnvironment environment)
+        public ExpensesController(ExpenseService service, IWebHostEnvironment environment, IConfiguration configuration)
         {
             _service = service;
             _environment = environment;
+            _configuration = configuration;
         }
 
         // --- Bulk Approve Endpoint ---
@@ -56,7 +58,7 @@ namespace Workflow.Api.Controllers
                     failed.Add(new { id, error = ex.Message });
                 }
             }
-            return Ok(new { approved, failed });
+            return Ok(ApiResponse<object>.Ok(new { approved, failed }));
         }
 
         // --- All Other Controller Methods ---
@@ -77,11 +79,11 @@ namespace Workflow.Api.Controllers
                     dto.ExpenseDate,
                     dto.CategoryId);
                 
-                return CreatedAtAction(nameof(GetById), new { id = expenseId }, new { id = expenseId });
+                return CreatedAtAction(nameof(GetById), new { id = expenseId }, ApiResponse<object>.Ok(new { id = expenseId }));
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -93,9 +95,9 @@ namespace Workflow.Api.Controllers
         {
             var expense = await _service.GetExpenseById(id);
             if (expense == null)
-                return NotFound(new { error = "Expense not found" });
+                return NotFound(ApiResponse.Fail("Expense not found"));
 
-            return Ok(expense);
+            return Ok(ApiResponse<object>.Ok(expense));
         }
 
         /// <summary>
@@ -106,7 +108,7 @@ namespace Workflow.Api.Controllers
         {
             var userId = GetCurrentUserId();
             var expenses = await _service.GetExpensesByCreator(userId, query);
-            return Ok(expenses);
+            return Ok(ApiResponse<object>.Ok(expenses));
         }
 
         /// <summary>
@@ -117,7 +119,7 @@ namespace Workflow.Api.Controllers
         public async Task<IActionResult> GetPending([FromQuery] ExpenseQuery query)
         {
             var expenses = await _service.GetPendingExpenses(query);
-            return Ok(expenses);
+            return Ok(ApiResponse<object>.Ok(expenses));
         }
 
         /// <summary>
@@ -130,15 +132,15 @@ namespace Workflow.Api.Controllers
             {
                 var userId = GetCurrentUserId();
                 await _service.UpdateExpense(id, userId, dto.Title, dto.Description, dto.Amount, dto.CategoryId);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -152,15 +154,15 @@ namespace Workflow.Api.Controllers
             {
                 var userId = GetCurrentUserId();
                 await _service.SubmitExpense(id, userId);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -176,36 +178,17 @@ namespace Workflow.Api.Controllers
                 var managerId = GetCurrentUserId();
                 var userRole = GetCurrentUserRole();
                 
-                // Get the expense to check creator's role
-                var expense = await _service.GetExpenseById(id);
-                if (expense == null)
-                    return NotFound(new { error = "Expense not found" });
-                
-                // Get creator's role
-                var creatorRole = await _service.GetUserRole(expense.CreatorId);
-                
-                // Authorization logic:
-                // - Managers can approve Employee expenses only
-                // - Admins can approve any expense (both Employee and Manager)
-                if (userRole == UserRole.Manager && creatorRole == UserRole.Manager)
-                {
-                    // Option 1: Standard Forbid (no message)
-                    // return Forbid();
-
-                    // Option 2: Custom error message with 403 status
-                    return StatusCode(403, new { error = "Managers can only approve employee expenses. Contact an administrator to approve manager expenses." });
-                }
-                
+                // Business logic (role check + approval) now fully in service layer
                 await _service.ApproveExpense(id, managerId, userRole);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -221,15 +204,15 @@ namespace Workflow.Api.Controllers
                 var managerId = GetCurrentUserId();
                 var userRole = GetCurrentUserRole();
                 await _service.RejectExpense(id, managerId, userRole, dto.Reason);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -242,15 +225,15 @@ namespace Workflow.Api.Controllers
             try
             {
                 await _service.AddAttachment(id, dto.AttachmentUrl);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -258,38 +241,55 @@ namespace Workflow.Api.Controllers
         /// Uploads a receipt for a draft expense
         /// </summary>
         [HttpPost("{id}/receipt")]
-        [Consumes("multipart/form-data")]
-        [RequestSizeLimit(5 * 1024 * 1024)]
-        public async Task<IActionResult> UploadReceipt(Guid id, IFormFile receipt)
+[Consumes("multipart/form-data")]
+[RequestSizeLimit(5 * 1024 * 1024)]
+public async Task<IActionResult> UploadReceipt(Guid id, IFormFile receipt)
+{
+    if (receipt == null || receipt.Length == 0)
+        return BadRequest(ApiResponse.Fail("Receipt file is required."));
+
+    const long maxSizeBytes = 5 * 1024 * 1024;
+    if (receipt.Length > maxSizeBytes)
+        return BadRequest(ApiResponse.Fail("Receipt file must be 5MB or smaller."));
+
+    var allowedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".pdf"
+    };
+
+    var ext = Path.GetExtension(receipt.FileName).ToLowerInvariant();
+    if (!allowedTypes.Contains(ext))
+        return BadRequest(ApiResponse.Fail("Invalid file type. Only images and PDFs are allowed."));
+
+    // Build the uploads directory and create it if it doesn't exist
+    var uploadsDir = Path.Combine(
+        _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
+        "uploads", "receipts");
+
+    if (!Directory.Exists(uploadsDir))
+        Directory.CreateDirectory(uploadsDir);
+
+    // Generate a unique filename to avoid collisions
+    var uniqueName = $"{Guid.NewGuid()}{ext}";
+    var filePath = Path.Combine(uploadsDir, uniqueName);
+
+    try
+    {
+        // Actually write the file to disk
+        using (var stream = new FileStream(filePath, FileMode.Create))
         {
-            if (receipt == null || receipt.Length == 0)
-            {
-                return BadRequest(new { error = "Receipt file is required." });
-            }
-
-            const long maxSizeBytes = 5 * 1024 * 1024;
-            if (receipt.Length > maxSizeBytes)
-            {
-                return BadRequest(new { error = "Receipt file must be 5MB or smaller." });
-            }
-
-            var allowedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ".jpg", ".jpeg", ".png", ".pdf"
-            };
-
-            if (!allowedTypes.Contains(Path.GetExtension(receipt.FileName).ToLowerInvariant()))
-            {
-                return BadRequest(new { error = "Invalid file type. Only images and PDFs are allowed." });
-            }
-
-            var filePath = Path.Combine(
-                _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
-                "uploads", "receipts", receipt.FileName);
-
-            await _service.AddAttachment(id, filePath);
-            return NoContent();
+            await receipt.CopyToAsync(stream);
         }
+
+        // Save only the filename, not the full path
+        await _service.AddAttachment(id, uniqueName);
+        return Ok(ApiResponse.Ok());
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, ApiResponse.Fail("Failed to save file."));
+    }
+}
 
         /// <summary>
         /// Deletes a draft expense (creator only)
@@ -301,15 +301,15 @@ namespace Workflow.Api.Controllers
             {
                 var userId = GetCurrentUserId();
                 await _service.DeleteExpense(id, userId);
-                return NoContent();
+                return Ok(ApiResponse.Ok());
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -322,30 +322,53 @@ namespace Workflow.Api.Controllers
             try
             {
                 var auditLogs = await _service.GetAuditHistory(id);
-                return Ok(auditLogs);
+                return Ok(ApiResponse<object>.Ok(auditLogs));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
         }
 
         /// <summary>
         /// Downloads an attachment for an expense with resource-based authorization
         /// </summary>
+        [Authorize]
         [HttpGet("{expenseId}/attachments/{fileName}")]
         public async Task<IActionResult> DownloadAttachment(Guid expenseId, string fileName, [FromServices] IAuthorizationService authorizationService, [FromServices] Workflow.Infrastructure.Data.WorkflowDbContext db)
         {
             // Validate filename to prevent directory traversal attacks
             if (string.IsNullOrEmpty(fileName) || fileName.Contains("..") || fileName.Contains("/") || fileName.Contains("\\"))
             {
-                return BadRequest(new { error = "Invalid filename." });
+                return BadRequest(ApiResponse.Fail("Invalid filename."));
+            }
+
+            // TODO: REMOVE BEFORE PROD — Dev file access bypass
+            if (_configuration.GetValue<bool>("DevSettings:BypassAuth"))
+            {
+                var devUploadsPath = _configuration["DevSettings:UploadsPath"]
+                    ?? Path.Combine(
+                        _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
+                        "uploads", "receipts");
+
+                var devFilePath = Path.Combine(devUploadsPath, fileName);
+                var devFullPath = Path.GetFullPath(devFilePath);
+                var devFullUploads = Path.GetFullPath(devUploadsPath);
+                if (!devFullPath.StartsWith(devFullUploads, StringComparison.OrdinalIgnoreCase))
+                    return Forbid();
+
+                if (!System.IO.File.Exists(devFilePath))
+                    return NotFound(ApiResponse.Fail("Attachment not found."));
+
+                var devStream = new FileStream(devFilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
+                return File(devStream, GetContentType(fileName), Path.GetFileName(devFilePath));
             }
 
             var expense = await db.ExpenseRequests.FindAsync(expenseId);
             if (expense == null)
-                return NotFound(new { error = "Expense not found." });
+                return NotFound(ApiResponse.Fail("Expense not found."));
 
+            // Resource-based authorization
             var authResult = await authorizationService.AuthorizeAsync(User, expense, "ExpenseAccess");
             if (!authResult.Succeeded)
                 return Forbid();
@@ -365,7 +388,7 @@ namespace Workflow.Api.Controllers
 
             if (!System.IO.File.Exists(filePath))
             {
-                return NotFound(new { error = "Attachment not found." });
+                return NotFound(ApiResponse.Fail("Attachment not found."));
             }
 
             var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
@@ -382,11 +405,11 @@ namespace Workflow.Api.Controllers
             try
             {
                 var comments = await _service.GetComments(id);
-                return Ok(comments);
+                return Ok(ApiResponse<object>.Ok(comments));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
         }
 
@@ -401,15 +424,15 @@ namespace Workflow.Api.Controllers
             {
                 var userId = GetCurrentUserId();
                 var comment = await _service.AddComment(id, userId, dto.Text);
-                return CreatedAtAction(nameof(GetComments), new { id = id }, comment);
+                return CreatedAtAction(nameof(GetComments), new { id = id }, ApiResponse<object>.Ok(comment));
             }
             catch (DomainException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(ApiResponse.Fail(ex.Message));
             }
             catch (InvalidOperationException ex)
             {
-                return NotFound(new { error = ex.Message });
+                return NotFound(ApiResponse.Fail(ex.Message));
             }
         }
 

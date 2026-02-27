@@ -72,6 +72,7 @@ public class BudgetService
     public async Task<List<Budget>> GetUserBudgets(Guid userId, bool activeOnly = false)
     {
         var query = _db.Budgets
+            .AsNoTracking()
             .Include(b => b.Category)
             .Where(b => b.UserId == userId);
 
@@ -87,28 +88,38 @@ public class BudgetService
     public async Task<List<BudgetStatus>> GetBudgetStatus(Guid userId)
     {
         var budgets = await _db.Budgets
+            .AsNoTracking()
             .Include(b => b.Category)
             .Where(b => b.UserId == userId && b.IsActive)
+            .ToListAsync();
+
+        if (budgets.Count == 0)
+            return new List<BudgetStatus>();
+
+        // FIX: Batch-load all approved expenses once instead of N+1
+        var minDate = budgets.Min(b => b.StartDate);
+        var maxDate = budgets.Max(b => b.EndDate);
+
+        var approvedExpenses = await _db.ExpenseRequests
+            .AsNoTracking()
+            .Where(e => e.CreatorId == userId &&
+                       e.Status == ExpenseStatus.Approved &&
+                       e.ExpenseDate >= minDate &&
+                       e.ExpenseDate <= maxDate)
+            .Select(e => new { e.Amount, e.ExpenseDate, e.CategoryId })
             .ToListAsync();
 
         var budgetStatuses = new List<BudgetStatus>();
 
         foreach (var budget in budgets)
         {
-            // Calculate spent amount based on approved expenses within budget period
-            var spentQuery = _db.ExpenseRequests
-                .Where(e => e.CreatorId == userId && 
-                           e.Status == ExpenseStatus.Approved &&
-                           e.ExpenseDate >= budget.StartDate && 
-                           e.ExpenseDate <= budget.EndDate);
+            // In-memory filtering per budget (instead of N separate DB queries)
+            var spentAmount = approvedExpenses
+                .Where(e => e.ExpenseDate >= budget.StartDate &&
+                           e.ExpenseDate <= budget.EndDate &&
+                           (!budget.CategoryId.HasValue || e.CategoryId == budget.CategoryId.Value))
+                .Sum(e => e.Amount);
 
-            // If budget is category-specific, filter by category
-            if (budget.CategoryId.HasValue)
-            {
-                spentQuery = spentQuery.Where(e => e.CategoryId == budget.CategoryId.Value);
-            }
-
-            var spentAmount = await spentQuery.SumAsync(e => (decimal?)e.Amount) ?? 0;
             var remainingAmount = budget.Amount - spentAmount;
             var percentageUsed = budget.Amount > 0 ? (double)(spentAmount / budget.Amount * 100) : 0;
             var daysRemaining = (budget.EndDate - DateTime.UtcNow).Days;
